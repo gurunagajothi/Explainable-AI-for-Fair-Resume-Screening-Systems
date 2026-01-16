@@ -1,0 +1,8 @@
+streamlit
+scikit-learn
+matplotlib
+PyPDF2
+nltk
+sentence-transformers
+torch
+numpy
