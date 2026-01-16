@@ -3,14 +3,17 @@ import pandas as pd
 import numpy as np
 import PyPDF2
 import re
-from io import StringIO
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import nltk
 
 # ---------------- NLTK Setup ----------------
-nltk.download('punkt')
+nltk.download('punkt')       # Fixed: Use 'punkt' instead of 'punkt_tab'
+nltk.download('stopwords')
+
 from nltk.corpus import stopwords
+from nltk.tokenize import word_tokenize
+
 stop_words = set(stopwords.words('english'))
 
 # ---------------- Sidebar ----------------
@@ -45,12 +48,13 @@ def extract_text(file):
     return text
 
 def extract_skills(text):
-    skills_db = ["python","java","c++","sql","machine learning","deep learning","nlp","excel","html","css","javascript","aws","docker","git"]
+    skills_db = ["python","java","c++","sql","machine learning","deep learning",
+                 "nlp","excel","html","css","javascript","aws","docker","git"]
     return [skill for skill in skills_db if skill.lower() in text.lower()]
 
 def keyword_match(resume_text, job_desc):
-    resume_tokens = [w.lower() for w in nltk.word_tokenize(resume_text) if w.isalnum()]
-    jd_tokens = [w.lower() for w in nltk.word_tokenize(job_desc) if w.isalnum()]
+    resume_tokens = [w.lower() for w in word_tokenize(resume_text) if w.isalnum()]
+    jd_tokens = [w.lower() for w in word_tokenize(job_desc) if w.isalnum()]
     match_count = len(set(resume_tokens) & set(jd_tokens))
     return round((match_count / len(set(jd_tokens))) * 100 if jd_tokens else 0, 2)
 
@@ -87,7 +91,7 @@ if uploaded_files:
 
         # Skill Gap Analysis
         st.subheader("Skill Gap Analysis")
-        all_skills_needed = [w.lower() for w in nltk.word_tokenize(job_desc) if w.isalnum()]
+        all_skills_needed = [w.lower() for w in word_tokenize(job_desc) if w.isalnum()]
         for idx, row in df.iterrows():
             missing_skills = list(set(all_skills_needed) - set([s.lower() for s in row["Skills"]]))
             df.at[idx, 'Missing Skills'] = missing_skills
