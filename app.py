@@ -3,11 +3,10 @@ import pandas as pd
 import numpy as np
 import PyPDF2
 import re
-import plotly.express as px
-from sklearn.feature_extraction.text import TfidfVectorizer
-from sklearn.metrics.pairwise import cosine_similarity
 from io import BytesIO
 from reportlab.pdfgen import canvas
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 import nltk
 import spacy
 
@@ -30,7 +29,7 @@ if theme == "Dark":
 
 # ------------------ Resume Upload ------------------
 uploaded_files = st.file_uploader(
-    "Upload Resume(s) PDF/TXT (DOCX not supported on Streamlit Cloud)", accept_multiple_files=True
+    "Upload Resume(s) PDF/TXT (DOCX not supported)", accept_multiple_files=True
 )
 
 job_desc = st.text_area("Paste Job Description Here")
@@ -47,7 +46,7 @@ def extract_text(file):
     elif file.name.endswith(".txt"):
         text = str(file.read(), "utf-8")
     else:
-        st.warning(f"{file.name} format not supported. Only PDF and TXT allowed.")
+        st.warning(f"{file.name} format not supported. Only PDF/TXT allowed.")
     text = re.sub(r'\s+', ' ', text)
     return text
 
@@ -104,17 +103,6 @@ if uploaded_files:
             df.at[idx, 'Missing Skills'] = missing_skills
             st.write(f"**{row['Name']}** missing skills: {missing_skills if missing_skills else 'None'}")
 
-        # Experience Timeline (example)
-        st.subheader("Experience Timeline (Example)")
-        for idx, row in df.iterrows():
-            timeline_df = pd.DataFrame({
-                "Company": ["Company A","Company B","Company C"],
-                "Duration": [2,1,3],
-                "Role": ["Intern","Developer","Senior Dev"]
-            })
-            fig = px.timeline(timeline_df, x_start=[0,2,3], x_end=[2,3,6], y="Company", color="Role")
-            st.plotly_chart(fig)
-
         # AI Explainability (TF-IDF + Cosine similarity)
         st.subheader("AI Explainability (TF-IDF + Cosine Similarity)")
         tfidf = TfidfVectorizer()
@@ -133,13 +121,6 @@ if uploaded_files:
                 file_name=f"{row['Name']}_report.pdf",
                 mime="application/pdf"
             )
-
-        # Candidate Comparison
-        if len(df) > 1:
-            st.subheader("Candidate Comparison")
-            metrics = ["Skill Count","Keyword Match %"]
-            comp_df = df[["Name"] + metrics].set_index("Name")
-            st.bar_chart(comp_df)
 
 # ------------------ Placeholder Sections ------------------
 st.subheader("Fairness & Bias Dashboard (Example)")
