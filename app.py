@@ -12,7 +12,7 @@ import PyPDF2  # Extract text from PDF
 import re
 
 # Load pre-trained model and TF-IDF vectorizer (ensure these are saved earlier)
-svc_model = pickle.load(open('clf.pkl', 'rb'))  # Example file name, adjust as needed
+svc_model = pickle.load(open('model (4).pkl', 'rb'))  # Example file name, adjust as needed
 tfidf = pickle.load(open('tfidf.pkl', 'rb'))  # Example file name, adjust as needed
 le = pickle.load(open('encoder.pkl', 'rb'))  # Example file name, adjust as needed
 
