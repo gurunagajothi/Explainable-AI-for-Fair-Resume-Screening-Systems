@@ -1,150 +1,167 @@
 import streamlit as st
-import matplotlib.pyplot as plt
-import PyPDF2
-import re
-import nltk
+import pandas as pd
 import numpy as np
-
-from nltk.corpus import stopwords
+import PyPDF2
+import docx2txt
+import re
+import plotly.express as px
+import matplotlib.pyplot as plt
+from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-from sentence_transformers import SentenceTransformer
+from io import BytesIO
+from reportlab.pdfgen import canvas
+import shap
+from lime.lime_text import LimeTextExplainer
+import nltk
+import spacy
+import requests
+from bs4 import BeautifulSoup
+import json
 
-# ==============================
-# NLTK
-# ==============================
-nltk.download("stopwords")
+# ------------------ NLTK & Spacy Setup ------------------
+nltk.download('punkt')
+nltk.download('stopwords')
+from nltk.corpus import stopwords
+stop_words = set(stopwords.words('english'))
+nlp = spacy.load("en_core_web_sm")
 
-# ==============================
-# Load SBERT model (semantic AI)
-# ==============================
-@st.cache_resource
-def load_model():
-    return SentenceTransformer("all-MiniLM-L6-v2")
+# ------------------ Sidebar ------------------
+st.sidebar.title("📝 Resume Analyzer Pro")
+theme = st.sidebar.radio("Theme", ["Light","Dark"])
+if theme == "Dark":
+    st.markdown("""
+    <style>
+    .reportview-container {background-color: #0E1117; color: white;}
+    </style>
+    """, unsafe_allow_html=True)
 
-model = load_model()
-
-# ==============================
-# Skill Weights (ATS-grade)
-# ==============================
-SKILL_WEIGHTS = {
-    "python": 5,
-    "java": 4,
-    "javascript": 5,
-    "react": 5,
-    "node": 5,
-    "express": 4,
-    "mysql": 4,
-    "docker": 3,
-    "aws": 3,
-    "rest": 4,
-    "api": 4,
-    "dsa": 5,
-    "data": 4,
-    "structures": 4,
-    "algorithms": 4,
-    "machine": 3,
-    "learning": 3,
-    "ai": 3,
-    "automation": 3
-}
-
-# ==============================
-# Page Config
-# ==============================
-st.set_page_config(
-    page_title="AI Resume Analyzer (Level 2 ATS)",
-    page_icon="📄",
-    layout="wide"
+# ------------------ Resume Upload ------------------
+uploaded_files = st.file_uploader(
+    "Upload Resume(s) PDF/DOCX/TXT", accept_multiple_files=True
 )
 
-st.title("📄 AI Resume Analyzer – Level 2 (IIT/NIT Grade)")
-st.write("Semantic + Skill-weighted ATS Resume Matching")
+job_desc = st.text_area("Paste Job Description Here")
 
-# ==============================
-# Helper Functions
-# ==============================
-def extract_text_from_pdf(file):
-    try:
-        reader = PyPDF2.PdfReader(file)
-        return " ".join(page.extract_text() for page in reader.pages)
-    except:
-        return ""
+# ------------------ Functions ------------------
+def extract_text(file):
+    text = ""
+    if file.name.endswith(".pdf"):
+        pdf_reader = PyPDF2.PdfReader(file)
+        for page in pdf_reader.pages:
+            text += page.extract_text()
+    elif file.name.endswith(".docx"):
+        text = docx2txt.process(file)
+    elif file.name.endswith(".txt"):
+        text = str(file.read(), "utf-8")
+    text = re.sub(r'\s+', ' ', text)
+    return text
 
-def clean_text(text):
-    text = text.lower()
-    text = re.sub(r"[^a-z\s]", " ", text)
-    return re.sub(r"\s+", " ", text).strip()
+def extract_skills(text):
+    skills_db = ["python","java","c++","sql","machine learning","deep learning","nlp","excel","html","css","javascript","aws","docker","git"]
+    found_skills = [skill for skill in skills_db if skill.lower() in text.lower()]
+    return found_skills
 
-def remove_stopwords(text):
-    sw = set(stopwords.words("english"))
-    return " ".join(w for w in text.split() if w not in sw)
+def keyword_match(resume_text, job_desc):
+    resume_tokens = [w.lower() for w in nltk.word_tokenize(resume_text) if w.isalnum()]
+    jd_tokens = [w.lower() for w in nltk.word_tokenize(job_desc) if w.isalnum()]
+    match_count = len(set(resume_tokens) & set(jd_tokens))
+    return round((match_count / len(set(jd_tokens))) * 100 if jd_tokens else 0, 2)
 
-def semantic_similarity(text1, text2):
-    emb1 = model.encode(text1)
-    emb2 = model.encode(text2)
-    return cosine_similarity([emb1], [emb2])[0][0] * 100
+def generate_pdf_report(candidate):
+    buffer = BytesIO()
+    c = canvas.Canvas(buffer)
+    c.drawString(100, 800, f"Candidate: {candidate['Name']}")
+    c.drawString(100, 780, f"Skills Found: {', '.join(candidate['Skills'])}")
+    c.drawString(100, 760, f"Keyword Match: {candidate['Keyword Match %']}%")
+    missing_skills = candidate.get('Missing Skills', [])
+    c.drawString(100, 740, f"Missing Skills: {', '.join(missing_skills) if missing_skills else 'None'}")
+    c.save()
+    return buffer
 
-def extract_weighted_skills(text):
-    words = set(text.split())
-    return {skill: weight for skill, weight in SKILL_WEIGHTS.items() if skill in words}
+# Placeholder for LinkedIn/GitHub Integration
+def fetch_linkedin_skills(linkedin_url):
+    # Dummy example
+    return ["python", "ml", "sql"]
 
-def skill_match_score(resume_text, job_text):
-    resume_skills = extract_weighted_skills(resume_text)
-    job_skills = extract_weighted_skills(job_text)
+# ------------------ Process Resumes ------------------
+candidate_data = []
 
-    if not job_skills:
-        return 0
+if uploaded_files:
+    for file in uploaded_files:
+        text = extract_text(file)
+        skills = extract_skills(text)
+        match_score = keyword_match(text, job_desc)
+        candidate_data.append({
+            "Name": file.name,
+            "Skills": skills,
+            "Skill Count": len(skills),
+            "Keyword Match %": match_score,
+            "Resume Text": text
+        })
 
-    matched_weight = sum(
-        weight for skill, weight in job_skills.items()
-        if skill in resume_skills
-    )
-    total_weight = sum(job_skills.values())
+    df = pd.DataFrame(candidate_data)
+    st.subheader("Candidate Overview")
+    st.dataframe(df[["Name","Skills","Skill Count","Keyword Match %"]])
 
-    return (matched_weight / total_weight) * 100
+    # Skill Gap Analysis
+    st.subheader("Skill Gap Analysis")
+    all_skills_needed = [w.lower() for w in nltk.word_tokenize(job_desc) if w.isalnum()]
+    for idx, row in df.iterrows():
+        missing_skills = list(set(all_skills_needed) - set([s.lower() for s in row["Skills"]]))
+        df.at[idx, 'Missing Skills'] = missing_skills
+        st.write(f"**{row['Name']}** missing skills: {missing_skills if missing_skills else 'None'}")
 
-# ==============================
-# ATS Score Calculation
-# ==============================
-def calculate_ats_score(resume_text, job_text):
-    resume_clean = remove_stopwords(clean_text(resume_text))
-    job_clean = remove_stopwords(clean_text(job_text))
+    # Experience Timeline (dummy for now)
+    st.subheader("Experience Timeline (Example)")
+    for idx, row in df.iterrows():
+        timeline_df = pd.DataFrame({
+            "Company": ["Company A","Company B","Company C"],
+            "Duration": [2,1,3],
+            "Role": ["Intern","Developer","Senior Dev"]
+        })
+        fig = px.timeline(timeline_df, x_start=[0,2,3], x_end=[2,3,6], y="Company", color="Role")
+        st.plotly_chart(fig)
 
-    semantic_score = semantic_similarity(resume_clean, job_clean)
-    skill_score = skill_match_score(resume_clean, job_clean)
+    # AI Explainability (TF-IDF + Cosine similarity example)
+    st.subheader("AI Explainability (TF-IDF + Cosine Similarity)")
+    tfidf = TfidfVectorizer()
+    vectors = tfidf.fit_transform([job_desc] + df["Resume Text"].tolist())
+    cos_sim = cosine_similarity(vectors[0:1], vectors[1:])
+    for i, sim in enumerate(cos_sim[0]):
+        st.write(f"{df['Name'][i]} similarity: {round(sim*100,2)}%")
 
-    # ATS Final Score (industry-like weighting)
-    final_score = (semantic_score * 0.4) + (skill_score * 0.6)
-
-    return round(final_score, 2), round(semantic_score, 2), round(skill_score, 2)
-
-# ==============================
-# UI
-# ==============================
-resume_file = st.file_uploader("Upload Resume (PDF)", type=["pdf"])
-job_desc = st.text_area("Paste Job Description", height=200)
-
-if st.button("Analyze Resume"):
-    if not resume_file or not job_desc.strip():
-        st.warning("Please upload resume and paste job description")
-    else:
-        resume_text = extract_text_from_pdf(resume_file)
-
-        final_score, semantic_score, skill_score = calculate_ats_score(
-            resume_text, job_desc
+    # Download PDF Reports
+    st.subheader("Download Candidate Reports")
+    for idx, row in df.iterrows():
+        buffer = generate_pdf_report(row)
+        st.download_button(
+            label=f"Download {row['Name']} Report",
+            data=buffer,
+            file_name=f"{row['Name']}_report.pdf",
+            mime="application/pdf"
         )
 
-        st.subheader("📊 ATS Match Analytics")
+# ------------------ Interactive Candidate Comparison ------------------
+if uploaded_files and len(df) > 1:
+    st.subheader("Candidate Comparison")
+    metrics = ["Skill Count","Keyword Match %"]
+    comp_df = df[["Name"] + metrics].set_index("Name")
+    st.bar_chart(comp_df)
 
-        c1, c2, c3 = st.columns(3)
-        c1.metric("Final ATS Score", f"{final_score}%")
-        c2.metric("Semantic Similarity", f"{semantic_score}%")
-        c3.metric("Skill Match", f"{skill_score}%")
+# ------------------ Placeholder: Fairness Dashboard ------------------
+st.subheader("Fairness & Bias Dashboard (Example)")
+st.write("Gender/Age/Education bias metrics can be calculated here using AI Fairness 360")
 
-        fig, ax = plt.subplots(figsize=(6, 0.5))
-        ax.barh([0], [final_score])
-        ax.set_xlim(0, 100)
-        ax.set_yticks([])
-        ax.set_xlabel("ATS Match %")
-        ax.set_title("Resume vs Job Description")
-        st.pyplot(fig)
+# ------------------ Placeholder: Career Path Suggestions ------------------
+st.subheader("Career Path & Skill Clustering (Example)")
+st.write("Suggest next skills or career growth paths based on current skills")
+
+# ------------------ Placeholder: Interactive What-If Analysis ------------------
+st.subheader("Interactive What-If Analysis")
+st.write("Modify candidate skills or experience and see AI scoring changes (future implementation)")
+
+# ------------------ Placeholder: LinkedIn/GitHub Integration ------------------
+st.subheader("LinkedIn/GitHub Skill Fetching Example")
+linkedin_url = st.text_input("Paste LinkedIn Profile URL for Skills Extraction:")
+if linkedin_url:
+    st.write(f"Skills extracted from LinkedIn: {fetch_linkedin_skills(linkedin_url)}")
