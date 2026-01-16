@@ -3,8 +3,7 @@ import pandas as pd
 import numpy as np
 import PyPDF2
 import re
-from io import BytesIO
-from reportlab.pdfgen import canvas
+from io import StringIO
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
 import nltk
@@ -61,16 +60,13 @@ def keyword_match(resume_text, job_desc):
     match_count = len(set(resume_tokens) & set(jd_tokens))
     return round((match_count / len(set(jd_tokens))) * 100 if jd_tokens else 0, 2)
 
-def generate_pdf_report(candidate):
-    buffer = BytesIO()
-    c = canvas.Canvas(buffer)
-    c.drawString(100, 800, f"Candidate: {candidate['Name']}")
-    c.drawString(100, 780, f"Skills Found: {', '.join(candidate['Skills'])}")
-    c.drawString(100, 760, f"Keyword Match: {candidate['Keyword Match %']}%")
+def generate_txt_report(candidate):
+    content = f"Candidate: {candidate['Name']}\n"
+    content += f"Skills Found: {', '.join(candidate['Skills'])}\n"
+    content += f"Keyword Match: {candidate['Keyword Match %']}%\n"
     missing_skills = candidate.get('Missing Skills', [])
-    c.drawString(100, 740, f"Missing Skills: {', '.join(missing_skills) if missing_skills else 'None'}")
-    c.save()
-    return buffer
+    content += f"Missing Skills: {', '.join(missing_skills) if missing_skills else 'None'}\n"
+    return content
 
 # ------------------ Process Resumes ------------------
 candidate_data = []
@@ -111,16 +107,23 @@ if uploaded_files:
         for i, sim in enumerate(cos_sim[0]):
             st.write(f"{df['Name'][i]} similarity: {round(sim*100,2)}%")
 
-        # Download PDF Reports
+        # Download TXT Reports
         st.subheader("Download Candidate Reports")
         for idx, row in df.iterrows():
-            buffer = generate_pdf_report(row)
+            content = generate_txt_report(row)
             st.download_button(
                 label=f"Download {row['Name']} Report",
-                data=buffer,
-                file_name=f"{row['Name']}_report.pdf",
-                mime="application/pdf"
+                data=content,
+                file_name=f"{row['Name']}_report.txt",
+                mime="text/plain"
             )
+
+        # Candidate Comparison
+        if len(df) > 1:
+            st.subheader("Candidate Comparison")
+            metrics = ["Skill Count","Keyword Match %"]
+            comp_df = df[["Name"] + metrics].set_index("Name")
+            st.bar_chart(comp_df)
 
 # ------------------ Placeholder Sections ------------------
 st.subheader("Fairness & Bias Dashboard (Example)")
